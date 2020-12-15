@@ -49,7 +49,7 @@ export class Client extends EventEmitter {
         this.id = v4()
         this.opts = {
             ...DEFAULT_OPTIONS,
-            ...opts
+            ...opts,
         }
 
         this.initAxios()
@@ -72,14 +72,14 @@ export class Client extends EventEmitter {
             baseURL: `${this.protocol}://${this.opts.host}:${this.opts.port}`,
             headers: { 'Cache-Control': 'no-cache' },
         })
-        
+
         this.api.interceptors.request.use((config) => {
             const token = this.opts.token
-        
+
             if (token) {
                 config.headers.Authorization = `Bearer ${token}`
             }
-        
+
             return config
         })
     }
@@ -87,7 +87,7 @@ export class Client extends EventEmitter {
     private registerEvents() {
         this.socket.on('message', (data: string) => {
             const packet = parseJSON(data, null)
- 
+
             if (packet) {
                 this.handle(new Packet(packet, this))
             }
@@ -101,14 +101,11 @@ export class Client extends EventEmitter {
             this.emit('close', code)
 
             if (this.opts.autoReconnect) {
-                setTimeout(
-                    () => {
-                        if (!this.destroyed) {
-                            this.connect()
-                        }
-                    },
-                    ++this.reconnectTries * this.opts.reconnectInterval * this.opts.reconnectIntervalMultiplier
-                )
+                setTimeout(() => {
+                    if (!this.destroyed) {
+                        this.connect()
+                    }
+                }, ++this.reconnectTries * this.opts.reconnectInterval * this.opts.reconnectIntervalMultiplier)
             }
         })
     }
@@ -122,9 +119,11 @@ export class Client extends EventEmitter {
 
     private handle(packet: Packet<unknown>) {
         let handler
-    
+        let index = -1
+
         if (packet.data.t === 'callback') {
             handler = this.findHandler(String(packet.data.i), 'callback')
+            index = this.handlers.indexOf(handler)
         } else {
             handler = this.findHandler(packet.data.n, packet.data.t)
         }
@@ -134,43 +133,46 @@ export class Client extends EventEmitter {
         }
 
         handler.handler(packet)
-        this.handlers.splice(this.handlers.indexOf(handler), 1)
+
+        if (index > -1) {
+            this.handlers.splice(index, 1)
+        }
     }
 
-    public connect(): Promise<void> {
-        return new Promise(async (resolve, reject) => {
-            if (!this.opts.host) {
-                this.opts.host = DEFAULT_HOST
+    public async connect(): Promise<void> {
+        if (!this.opts.host) {
+            this.opts.host = DEFAULT_HOST
+        }
+
+        if (!this.opts.port) {
+            this.opts.port = DEFAULT_PORT
+        }
+
+        if (!this.opts.token) {
+            try {
+                this.opts.token = await getServiceToken()
+            } catch (err) {
+                this.opts.token = ''
             }
+        }
 
-            if (!this.opts.port) {
-                this.opts.port = DEFAULT_PORT
-            }
-
-            if (!this.opts.token) {
-                try {
-                    this.opts.token = await getServiceToken()
-                } catch(err) {
-                    this.opts.token = ''
-                }
-            }
-
-            this.socket = new WebSocket(this.wsEndpoint, {
-                headers: {
-                    Authorization: `Bearer ${this.opts.token}`
-                }
-            })
-
-            this.registerEvents()
-            this.socket.once('open', () => {
-                this.call('auth/login', { s: this.opts.name }).then(() => {
-                    this.reconnectTries = 0
-
-                    this.emit('connect')
-                    resolve()
-                }).catch(reject)
-            })
+        this.socket = new WebSocket(this.wsEndpoint, {
+            headers: {
+                Authorization: `Bearer ${this.opts.token}`,
+            },
         })
+
+        const onceOpen = () => {
+            return new Promise((resolve) => this.socket.once('open', resolve))
+        }
+
+        this.registerEvents()
+
+        await onceOpen()
+        await this.call('auth/login', { s: this.opts.name })
+
+        this.reconnectTries = 0
+        this.emit('connect')
     }
 
     public destroy(): void {
@@ -178,7 +180,11 @@ export class Client extends EventEmitter {
         this.destroyed = true
     }
 
-    public send<T = unknown>(type: PacketType, path: string, data: unknown): Promise<T> {
+    public send<T = unknown>(
+        type: PacketType,
+        path: string,
+        data: unknown
+    ): Promise<T> {
         return new Promise((resolve, reject) => {
             const parts = path.split('/')
             const id = `${this.id}-${this.callbacks++}`
@@ -211,27 +217,31 @@ export class Client extends EventEmitter {
         })
     }
 
-    public call(path: string, data?: unknown) {
+    public call<T>(path: string, data?: unknown): Promise<T> {
         return this.send('call', path, data)
     }
 
-    public watch(path: string, data: unknown) {
+    public watch<T>(path: string, data: unknown): Promise<T> {
         return this.send('watch', path, data)
     }
 
-    public write<T>(data: PacketData<T>) {
+    public write<T>(data: PacketData<T>): void {
         this.socket.send(JSON.stringify(data))
     }
 
-    public registerHandler(name: string, type: HandlerType, handler: HandlerFunction) {
+    public registerHandler(
+        name: string,
+        type: HandlerType,
+        handler: HandlerFunction
+    ): void {
         this.handlers.push({ name, handler, type })
     }
 
-    public registerMethod(name: string, handler: HandlerFunction) {
+    public registerMethod(name: string, handler: HandlerFunction): void {
         this.registerHandler(name, 'call', handler)
     }
 
-    public registerWatcher(name: string, handler: HandlerFunction) {
+    public registerWatcher(name: string, handler: HandlerFunction): void {
         this.registerHandler(name, 'watch', handler)
     }
 }

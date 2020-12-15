@@ -14,11 +14,11 @@ export class Packet<T = unknown> {
     public readonly data: PacketData<T>
     public readonly client: Client
 
-    get type() {
+    get type(): PacketType {
         return this.data.t
     }
 
-    get service() {
+    get service(): string {
         return this.data.s
     }
 
@@ -27,7 +27,7 @@ export class Packet<T = unknown> {
         this.client = client
     }
 
-    respond(data?: unknown) {
+    respond(data?: unknown): void {
         this.client.write({
             d: data,
             t: 'callback',
@@ -42,5 +42,5 @@ export type HandlerType = PacketType
 export interface Handler {
     name: string
     type: HandlerType
-    handler: Function
+    handler: (packet: Packet) => void
 }

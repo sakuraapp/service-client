@@ -25,24 +25,36 @@ export interface SecretResponse {
     }
 }
 
-export async function getServiceToken(accountName?: string, client?: ApiRoot): Promise<string> {
+export async function getServiceToken(
+    accountName?: string,
+    client?: ApiRoot
+): Promise<string> {
     if (!client) {
-        const mode = process.env.KUBERNETES_SERVICE_HOST ? 'cluster' : 'standalone'
-        const K8S_OPTIONS = mode === 'cluster' ?
-            { backend: new Request(config.getInCluster()) }
-            : {}
-        
+        const mode = process.env.KUBERNETES_SERVICE_HOST
+            ? 'cluster'
+            : 'standalone'
+        const K8S_OPTIONS =
+            mode === 'cluster'
+                ? { backend: new Request(config.getInCluster()) }
+                : {}
+
         client = new K8sClient(K8S_OPTIONS)
     }
 
     if (!accountName) {
         accountName = process.env.SERVICE_ACCOUNT || 'sakura'
     }
-    
-    const svcAccRes: ServiceAccountResponse = await client.api.v1.ns('default').serviceaccounts(accountName).get()
+
+    const svcAccRes: ServiceAccountResponse = await client.api.v1
+        .ns('default')
+        .serviceaccounts(accountName)
+        .get()
 
     const secretName = svcAccRes.body.secrets[0].name
-    const secretRes: SecretResponse = await client.api.v1.ns('default').secrets(secretName).get()
+    const secretRes: SecretResponse = await client.api.v1
+        .ns('default')
+        .secrets(secretName)
+        .get()
 
     return decodeBase64(secretRes.body.data.token)
 }

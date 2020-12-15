@@ -3,7 +3,7 @@ export function parseJSON<T>(str: string, def: T): string | T {
 
     try {
         res = JSON.parse(str)
-    } catch(err) {
+    } catch (err) {
         res = def
     }
 
