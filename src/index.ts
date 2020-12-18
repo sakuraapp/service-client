@@ -100,7 +100,7 @@ export class Client extends EventEmitter {
         this.socket.on('close', (code) => {
             this.emit('close', code)
 
-            if (this.opts.autoReconnect) {
+            if (this.opts.autoReconnect && !this.destroyed) {
                 setTimeout(() => {
                     if (!this.destroyed) {
                         this.connect()
